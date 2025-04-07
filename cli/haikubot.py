@@ -153,6 +153,8 @@ class HaikubotMain:
             return
         print(cyan(f'\nDeploying new changes ({starting_version} --> {new_version}).'))
 
+        subprocess.Popen('(. /Users/jeopardye/.virtualenvs/haikubot/bin/activate && pip install .',
+                         cwd=HAIKUBOT_GIT_HOME, shell=True)
         self.restart_server()
 
         print(green(f'\nSuccessfully deployed version {new_version} of the haikubot server.'))
@@ -220,6 +222,8 @@ class HaikubotMain:
     @classmethod
     def restart_server(cls) -> None:
         cls.stop_server()
+        print(bold('Waiting for workers to exit...'))
+        time.sleep(10)
         cls.start_server()
 
     def run(self) -> None:
