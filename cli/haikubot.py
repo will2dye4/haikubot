@@ -153,7 +153,7 @@ class HaikubotMain:
             return
         print(cyan(f'\nDeploying new changes ({starting_version} --> {new_version}).'))
 
-        subprocess.Popen('(. /Users/jeopardye/.virtualenvs/haikubot/bin/activate && pip install .',
+        subprocess.Popen('. /Users/jeopardye/.virtualenvs/haikubot/bin/activate && pip install .',
                          cwd=HAIKUBOT_GIT_HOME, shell=True)
         self.restart_server()
 
