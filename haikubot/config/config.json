@@ -6,7 +6,8 @@
   },
   "server": {
     "port": 5555,
-    "debug": true
+    "debug": true,
+    "pid_file_path": null
   },
   "ssl": {
     "cert_path": null,
