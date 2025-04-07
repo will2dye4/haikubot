@@ -61,43 +61,26 @@ def haiku():
     if not text:
         return generate_haiku(context=context)
 
-    parts = text.split()
-    subcommand = parts.pop(0).lower()
+    args = text.split()
+    subcommand = args.pop(0).lower()
     if subcommand in {'add', 'remove'}:
-        if len(parts) < 2 or parts[0].lower() not in SYLLABLE_COUNTS:
-            return slack_response(f'Usage: {command} {subcommand} 5|7 <line>', ephemeral=True)
-        syllables = SYLLABLE_COUNTS[parts[0].lower()]
-        line = slack_escape(parts[1:])
-        if subcommand == 'add':
-            return add_line(line, syllables=syllables, context=context)
-        else:
-            return remove_line(line, syllables=syllables, context=context)
+        return handle_add_remove_command(command, subcommand, args, context)
     elif subcommand in {'blame', 'praise'}:
-        if parts:
+        if args:
             return slack_response(f'Usage: {command} {subcommand}', ephemeral=True)
         return get_blame(context=context)
     elif subcommand == 'about':
-        if not parts:
-            return slack_response(f'Usage: {command} {subcommand} <topic>', ephemeral=True)
-        topic = slack_escape(parts)
-        if topic in {'.', '.*', '.+'}:
-            return generate_haiku(context=context)
-        return generate_haiku(context=context, search_term=topic)
+        return handle_about_command(command, args, context)
     elif subcommand == 'by':
-        if len(parts) != 1:
-            return slack_response(f'Usage: {command} {subcommand} <user>', ephemeral=True)
-        if parts[0].lower() == 'me':
-            user_id = context.user_id
-        elif not (user_id := get_user_id(parts[0])):
-            return slack_response(
-                f'You need to tag a user by name! Example: {command} {subcommand} {slack_mention(context.user_id)}',
-                ephemeral=True
-            )
-        return generate_haiku(context=context, user_id=user_id)
+        return handle_by_command(command, args, context)
     elif subcommand == 'stats':
-        if parts:
-            return slack_response(f'Usage: {command} {subcommand}', ephemeral=True)
+        if args:
+            return slack_response(f'Usage: {command} stats', ephemeral=True)
         return get_stats(context=context)
+    elif subcommand == 'version':
+        if args:
+            return slack_response(f'Usage: {command} version', ephemeral=True)
+        return slack_response(f'🤖 haikubot version {VERSION}', ephemeral=True)
 
     return help_message(command)
 
@@ -112,6 +95,39 @@ def help_message(command: str) -> JSONResponse:
         *{command} remove 5|7 <line>* => remove a line of 5 or 7 syllables
         *{command} blame* => show the users who wrote the last haiku in this channel
     ''').strip(), ephemeral=True)
+
+
+def handle_add_remove_command(command: str, subcommand: str, args: list[str], context: SlackContext) -> JSONResponse:
+    if len(args) < 2 or args[0].lower() not in SYLLABLE_COUNTS:
+        return slack_response(f'Usage: {command} {subcommand} 5|7 <line>', ephemeral=True)
+    syllables = SYLLABLE_COUNTS[args[0].lower()]
+    line = slack_escape(args[1:])
+    if subcommand == 'add':
+        return add_line(line, syllables=syllables, context=context)
+    else:
+        return remove_line(line, syllables=syllables, context=context)
+
+
+def handle_about_command(command: str, args: list[str], context: SlackContext) -> JSONResponse:
+    if not args:
+        return slack_response(f'Usage: {command} about <topic>', ephemeral=True)
+    search_term = slack_escape(args)
+    if search_term in {'.', '.*', '.+'}:
+        return generate_haiku(context=context)
+    return generate_haiku(context=context, search_term=search_term)
+
+
+def handle_by_command(command: str, args: list[str], context: SlackContext) -> JSONResponse:
+    if len(args) != 1:
+        return slack_response(f'Usage: {command} by <user>', ephemeral=True)
+    if args[0].lower() == 'me':
+        user_id = context.user_id
+    elif not (user_id := get_user_id(args[0])):
+        return slack_response(
+            f'You need to tag a user by name! Example: {command} by {slack_mention(context.user_id)}',
+            ephemeral=True
+        )
+    return generate_haiku(context=context, user_id=user_id)
 
 
 def generate_haiku(context: SlackContext, user_id: Optional[str] = None,
