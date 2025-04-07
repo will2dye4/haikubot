@@ -212,6 +212,8 @@ class HaikubotMain:
             print(bold(f'Stopping the server (PID {pid})...'))
             subprocess.run(['kill', '-9', pid], check=True)
             print(green(f'Successfully stopped the haikubot server.'))
+            if os.path.exists(HAIKUBOT_PID_FILE):
+                os.remove(HAIKUBOT_PID_FILE)
         else:
             print(cyan('The haikubot server is not currently running.'))
 
