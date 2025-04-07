@@ -9,7 +9,7 @@
     "debug": true
   },
   "ssl": {
-    "cert_path": "",
-    "key_path": ""
+    "cert_path": null,
+    "key_path": null
   }
 }

@@ -38,7 +38,7 @@ To run the server using `gunicorn`, run the following:
 ```shell
 $ pip install .
 $ pip install gunicorn
-$ gunicorn -w `sysctl -n hw.ncpu` -b 0.0.0.0 'haikubot:app'
+$ gunicorn -c haikubot/config/gunicorn.conf.py 'haikubot:app'
 ```
 
 ## Scripts
