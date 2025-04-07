@@ -1,4 +1,3 @@
-from http import HTTPMethod
 from importlib.metadata import version as package_version
 from typing import Any, Optional
 import re
@@ -49,7 +48,7 @@ def version():
     return {'version': VERSION}
 
 
-@app.route('/api/command/haiku', methods=[HTTPMethod.POST.value])
+@app.route('/api/command/haiku', methods=['POST'])
 def haiku():
     if request.form.get('ssl_check'):
         return ''  # Send empty response to Slack SSL certificate check.

@@ -18,7 +18,7 @@ handles invocations of the `/haiku` slash command in Slack.
 
 ## Running the Server
 
-**NOTE:** `haikubot` depends on [Python](https://www.python.org/downloads/) 3.11
+**NOTE:** `haikubot` depends on [Python](https://www.python.org/downloads/) 3.10
 or newer; please ensure that you have a semi-recent version of Python installed
 before proceeding.
 
