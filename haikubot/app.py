@@ -32,7 +32,7 @@ SYLLABLE_COUNTS = {
 
 
 SLACK_ESCAPE_PATTERN = re.compile(r'^<.*?>$')
-SLACK_USER_ID_PATTERN = re.compile(r'^<@(?P<user_id>U\w+)>$', re.IGNORECASE)
+SLACK_USER_ID_PATTERN = re.compile(r'^<@(?P<user_id>U\w+)(\|.*?)?>$', re.IGNORECASE)
 
 
 app = Flask(__name__)
