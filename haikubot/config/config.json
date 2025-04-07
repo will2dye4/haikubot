@@ -1,0 +1,15 @@
+{
+  "db": {
+    "host": "localhost",
+    "port": 27017,
+    "name": "haiku"
+  },
+  "server": {
+    "port": 5555,
+    "debug": true
+  },
+  "ssl": {
+    "cert_path": "",
+    "key_path": ""
+  }
+}
