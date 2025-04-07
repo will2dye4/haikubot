@@ -4,10 +4,10 @@ from enum import Enum
 import argparse
 import os
 import os.path
+import re
 import subprocess
 import sys
 import time
-import tomllib
 
 
 HAIKUBOT_GIT_HOME = os.getenv('HAIKUBOT_GIT_HOME', '/Users/jeopardye/dev/git/haikubot')
@@ -25,6 +25,8 @@ COMMAND_HELP = f'''
 Command to run: {DEPLOY_COMMAND_USAGE}, {FETCH_COMMAND_USAGE}, {LOGS_COMMAND_USAGE}, {SERVER_COMMAND_USAGE}, 
 or {VERSION_COMMAND_USAGE}
 '''
+
+PROJECT_VERSION_PATTERN = re.compile(r'version = "(?P<version>[\d.]+)"')
 
 
 class Command(Enum):
@@ -121,9 +123,12 @@ class HaikubotMain:
 
     @staticmethod
     def get_version_number() -> str:
-        with open(os.path.join(HAIKUBOT_GIT_HOME, 'pyproject.toml'), 'rb') as f:
-            project = tomllib.load(f)
-        return project['tool']['poetry']['version']
+        with open(os.path.join(HAIKUBOT_GIT_HOME, 'pyproject.toml')) as f:
+            lines = f.readlines()
+        for line in lines:
+            if match := PROJECT_VERSION_PATTERN.match(line):
+                return match.group('version')
+        return ''
 
     @classmethod
     def fetch_changes(cls) -> tuple[str, str]:
