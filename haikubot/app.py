@@ -6,10 +6,11 @@ import textwrap
 from flask import Flask, request
 
 from haikubot.db import (
+    add_haiku_line,
     generate_random_haiku,
     get_haiku_blame,
     get_haiku_stats,
-    add_haiku_line,
+    LinePosition,
     remove_haiku_line,
     SlackContext,
 )
@@ -21,13 +22,21 @@ JSONResponse = dict[str, Any]
 VERSION = package_version('haikubot')
 
 
+SYLLABLE_PATTERN = re.compile(r'^(?P<count>5|7|five|seven)s?(\[(?P<position>\^|\$|1st|first|last)])?$', re.IGNORECASE)
+
 SYLLABLE_COUNTS = {
     '5': 5,
     'five': 5,
-    'fives': 5,
     '7': 7,
     'seven': 7,
-    'sevens': 7,
+}
+
+LINE_POSITIONS = {
+    '^': LinePosition.FIRST,
+    '1st': LinePosition.FIRST,
+    'first': LinePosition.FIRST,
+    '$': LinePosition.LAST,
+    'last': LinePosition.LAST,
 }
 
 
@@ -98,12 +107,15 @@ def help_message(command: str) -> JSONResponse:
 
 
 def handle_add_remove_command(command: str, subcommand: str, args: list[str], context: SlackContext) -> JSONResponse:
-    if len(args) < 2 or args[0].lower() not in SYLLABLE_COUNTS:
+    if len(args) < 2 or not (match := SYLLABLE_PATTERN.match(args[0])):
         return slack_response(f'Usage: {command} {subcommand} 5|7 <line>', ephemeral=True)
-    syllables = SYLLABLE_COUNTS[args[0].lower()]
+    syllables = SYLLABLE_COUNTS[match.group('count').lower()]
     line = slack_escape(args[1:])
     if subcommand == 'add':
-        return add_line(line, syllables=syllables, context=context)
+        position = LINE_POSITIONS[pos.lower()] if (pos := match.group('position')) else None
+        if syllables == 7 and position:
+            return slack_response(f'Position ({pos}) may only be included for 5-syllable lines!', ephemeral=True)
+        return add_line(line, syllables=syllables, context=context, position=position)
     else:
         return remove_line(line, syllables=syllables, context=context)
 
@@ -142,8 +154,9 @@ def generate_haiku(context: SlackContext, user_id: Optional[str] = None,
     return slack_response(error + '!')  # NOT an ephemeral message since this can also happen when adding lines.
 
 
-def add_line(line: str, syllables: int, context: SlackContext) -> JSONResponse:
-    if add_haiku_line(line, syllables=syllables, context=context):
+def add_line(line: str, syllables: int, context: SlackContext,
+             position: Optional[LinePosition] = None) -> JSONResponse:
+    if add_haiku_line(line, syllables=syllables, context=context, position=position):
         print(f'User {context.user_id} added line: {line}'
               f' (team: {context.team_id}, channel: {context.channel_id})')
         return generate_haiku(context=context, search_term=f'^{re.escape(line)}$')
