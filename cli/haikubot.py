@@ -14,6 +14,9 @@ HAIKUBOT_GIT_HOME = os.getenv('HAIKUBOT_GIT_HOME', '/Users/jeopardye/dev/git/hai
 HAIKUBOT_LOG_FILE = os.getenv('HAIKUBOT_LOG_FILE', '/var/log/haikubot/server.log')
 HAIKUBOT_PID_FILE = os.getenv('HAIKUBOT_PID_FILE', '/opt/homebrew/var/run/haikubot.pid')
 
+HAIKUBOT_VIRTUALENV_HOME = os.getenv('HAIKUBOT_VIRTUALENV_HOME', '/Users/jeopardye/.virtualenvs/haikubot')
+HAIKUBOT_VIRTUALENV_ACTIVATE = os.path.join(HAIKUBOT_VIRTUALENV_HOME, 'bin', 'activate')
+
 
 DEPLOY_COMMAND_USAGE = 'deploy'
 FETCH_COMMAND_USAGE = 'fetch'
@@ -153,10 +156,14 @@ class HaikubotMain:
             return
         print(cyan(f'\nDeploying new changes ({starting_version} --> {new_version}).'))
 
-        subprocess.Popen('. /Users/jeopardye/.virtualenvs/haikubot/bin/activate && pip install .',
-                         cwd=HAIKUBOT_GIT_HOME, shell=True)
-        self.restart_server()
+        process = subprocess.Popen(f'. {HAIKUBOT_VIRTUALENV_ACTIVATE} && pip install .',
+                                   cwd=HAIKUBOT_GIT_HOME, shell=True)
+        process.wait()
+        if process.returncode != 0:
+            print(red(f'\nFailed to pip install latest changes ({new_version})!'))
+            return
 
+        self.restart_server()
         print(green(f'\nSuccessfully deployed version {new_version} of the haikubot server.'))
 
     @staticmethod
@@ -194,7 +201,7 @@ class HaikubotMain:
             print(cyan(f'The haikubot server is already running (PID {pid}).'))
         else:
             subprocess.Popen(
-                '(. /Users/jeopardye/.virtualenvs/haikubot/bin/activate &&'
+                f'(. {HAIKUBOT_VIRTUALENV_ACTIVATE} &&'
                 f' nohup gunicorn -c haikubot/config/gunicorn.conf.py "haikubot:app") >> {HAIKUBOT_LOG_FILE} 2>&1',
                 cwd=HAIKUBOT_GIT_HOME, shell=True
             )
