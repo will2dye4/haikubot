@@ -1,3 +1,4 @@
+from importlib.metadata import version as package_version
 from typing import Optional
 import re
 import textwrap
@@ -9,9 +10,14 @@ from haikubot.db import (
     generate_random_haiku,
     LinePosition,
     remove_haiku_line,
-    SlackContext,
 )
-from haikubot.slack import get_user_id, slack_escape, slack_mention, SlackResponse
+from haikubot.slack import (
+    get_user_id,
+    SlackContext,
+    slack_escape,
+    slack_mention,
+    SlackResponse,
+)
 
 
 SYLLABLE_PATTERN = re.compile(r'^(?P<count>5|7|five|seven)s?(\[(?P<position>\^|\$|1st|first|last)])?$', re.IGNORECASE)
@@ -30,6 +36,49 @@ LINE_POSITIONS = {
     '$': LinePosition.LAST,
     'last': LinePosition.LAST,
 }
+
+
+VERSION = package_version('haikubot')
+
+
+def handle_haiku_command(command: str, text: str, context: SlackContext) -> SlackResponse:
+    if not text:
+        return generate_haiku(context=context)
+
+    args = text.strip().split()
+    subcommand = args.pop(0).lower()
+    if subcommand in {'add', 'remove'}:
+        return handle_add_remove_command(command, subcommand, args, context)
+    elif subcommand in {'blame', 'praise'}:
+        if args:
+            return SlackResponse(f'Usage: {command} {subcommand}', ephemeral=True)
+        return get_blame(context=context)
+    elif subcommand == 'about':
+        return handle_about_command(command, args, context)
+    elif subcommand == 'by':
+        return handle_by_command(command, args, context)
+    elif subcommand == 'stats':
+        if args:
+            return SlackResponse(f'Usage: {command} stats', ephemeral=True)
+        return get_stats(context=context)
+    elif subcommand == 'version':
+        if args:
+            return SlackResponse(f'Usage: {command} version', ephemeral=True)
+        return SlackResponse(f'🤖 haikubot version {VERSION}', ephemeral=True)
+    else:
+        return help_message(command)
+
+
+def help_message(command: str) -> SlackResponse:
+    return SlackResponse(textwrap.dedent(f'''
+        Usage:
+        *{command}* => generate a random haiku from remembered lines
+        *{command} about <topic>* => generate a random haiku about a specific topic or keyword
+        *{command} by <user>* => generate a random haiku by a specific user
+        *{command} add 5|7 <line>* => remember a line of 5 or 7 syllables
+        *{command} remove 5|7 <line>* => remove a line of 5 or 7 syllables
+        *{command} blame* => show the users who wrote the last haiku in this channel
+    ''').strip(), ephemeral=True)
 
 
 def handle_add_remove_command(command: str, subcommand: str, args: list[str], context: SlackContext) -> SlackResponse:

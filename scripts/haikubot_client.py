@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 
+from threading import Thread
 from typing import Optional
+import logging
 import readline  # Not used directly, but required for previous input completion.
+import time
 
+from flask import Flask, request
+from werkzeug.serving import make_server
 import requests
 
 from haikubot import config
-from haikubot.app import slack_mention
+from haikubot.constants import DEFAULT_SERVER_PORT, MOCK_SLACK_API_SERVER_PORT
+from haikubot.slack import slack_mention
 
 DEFAULT_CHANNEL_ID = 'Cgeneral'
 DEFAULT_TEAM_ID = 'Tsppp'
 DEFAULT_USER_ID = 'Uwill2dye4'
 
-BASE_URL = f'http://localhost:{config.get("server.port", 5555)}/api'
+APP_USER_ID = 'Uhaikubot'
+
+BASE_URL = f'http://localhost:{config.get("server.port", DEFAULT_SERVER_PORT)}/api'
 
 
 def health() -> None:
@@ -67,17 +75,71 @@ def invoke_haiku_command(text: str, user_id: str = DEFAULT_USER_ID, channel_id: 
     print(response.json()['text'])
 
 
-def main() -> None:
+def invoke_app_mention(text: str, user_id: str = DEFAULT_USER_ID, channel_id: str = DEFAULT_CHANNEL_ID,
+                       team_id: str = DEFAULT_TEAM_ID) -> None:
+    payload = {
+        'type': 'event_callback',
+        'team_id': team_id,
+        'event': {'type': 'app_mention', 'text': text, 'channel': channel_id, 'user': user_id},
+        'authorizations': [{'user_id': APP_USER_ID}],
+    }
+    response = requests.post(f'{BASE_URL}/event/dispatch', json=payload)
+    response.raise_for_status()
+    # Response does not contain the reply from the bot; it will be sent asynchronously.
+
+
+app = Flask(__name__)
+
+@app.route('/slack/chat.postMessage', methods=['POST'])
+def slack_api_post_message():
+    print(request.json['text'])
+    return ''
+
+
+class ServerThread(Thread):
+
+    def __init__(self):
+        super().__init__()
+        self.server = make_server('127.0.0.1', MOCK_SLACK_API_SERVER_PORT, app)
+        self.ctx = app.app_context()
+        self.ctx.push()
+
+    def run(self):
+        self.server.serve_forever()
+
+    def shutdown(self):
+        self.server.shutdown()
+
+
+def haikubot_repl() -> None:
     print('Chat with the haikubot! (Ctrl+C to quit)')
     while True:
         try:
             message = input('> ')
             if message.startswith('/haiku'):
                 invoke_haiku_command(message[len('/haiku'):])
+            elif message.startswith(slack_mention(APP_USER_ID)):
+                invoke_app_mention(message)
+                time.sleep(0.2)  # Wait for async response.
             else:
                 print(f'< {message}')
         except (EOFError, KeyboardInterrupt):
             break
+
+
+def main() -> None:
+    # Suppress request logging for mock server.
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
+    server_thread = ServerThread()
+    server_thread.start()
+    print(f'Started mock Slack API server on port {MOCK_SLACK_API_SERVER_PORT}\n')
+
+    haikubot_repl()
+
+    print('\nShutting down mock Slack API server...')
+    server_thread.shutdown()
+    server_thread.join()
 
 
 if __name__ == '__main__':

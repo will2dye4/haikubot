@@ -1,3 +1,5 @@
+haikubot/config/slack_teams.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

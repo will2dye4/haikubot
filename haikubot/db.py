@@ -11,11 +11,8 @@ from pymongo import DESCENDING, MongoClient
 from pymongo.cursor import Cursor
 
 from haikubot import config
-
-
-DEFAULT_DB_HOST = 'localhost'
-DEFAULT_DB_PORT = 27017
-DEFAULT_DB_NAME = 'haiku'
+from haikubot.constants import DEFAULT_DB_NAME, DEFAULT_DB_PORT, DEFAULT_DB_HOST
+from haikubot.slack import SlackContext
 
 
 client = MongoClient(host=config.get('db.host', DEFAULT_DB_HOST),
@@ -30,17 +27,6 @@ class LinePosition(Enum):
     @classmethod
     def value_of(cls, string: str) -> Optional['LinePosition']:
         return next((f for f in cls if f.value == string), None)
-
-
-@dataclass(frozen=True)
-class SlackContext:
-    user_id: str
-    channel_id: str
-    team_id: str
-
-    @classmethod
-    def from_bson(cls, bson: dict[str, Any]) -> 'SlackContext':
-        return cls(user_id=bson['user_id'], channel_id=bson['channel_id'], team_id=bson['team_id'])
 
 
 @dataclass(frozen=True)

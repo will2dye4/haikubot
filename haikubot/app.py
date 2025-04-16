@@ -1,21 +1,18 @@
-from importlib.metadata import version as package_version
-import textwrap
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, request
 
-from haikubot.db import SlackContext
-from haikubot.haiku import (
-    generate_haiku,
-    get_blame,
-    get_stats,
-    handle_about_command,
-    handle_add_remove_command,
-    handle_by_command,
-)
-from haikubot.slack import SlackResponse
+from haikubot.haiku import handle_haiku_command, VERSION
+from haikubot.slack import SlackContext
+from haikubot.slack.event import handle_slack_event
 
 
-VERSION = package_version('haikubot')
+event_queue = ThreadPoolExecutor()
+
+def shutdown_event_queue(_ = None) -> None:
+    # Note: gunicorn requires this function to accept an argument, but we don't use it.
+    print('Shutting down Slack event queue...')
+    event_queue.shutdown()
 
 
 app = Flask(__name__)
@@ -36,50 +33,27 @@ def haiku():
     if request.form.get('ssl_check'):
         return ''  # Send empty response to Slack SSL certificate check.
 
+    try:
+        context = SlackContext.from_slash_command(request.form)
+    except ValueError as e:
+        print(f'Failed to handle haiku slash command: {e}')
+        return '', 400
+
     command = request.form.get('command', '')
     text = request.form.get('text', '').strip()
-    context = SlackContext(user_id=request.form.get('user_id', ''), channel_id=request.form.get('channel_id', ''),
-                           team_id=request.form.get('team_id', ''))
-
-    if not text:
-        return generate_haiku(context=context).to_json()
-
-    args = text.split()
-    subcommand = args.pop(0).lower()
-    if subcommand in {'add', 'remove'}:
-        response = handle_add_remove_command(command, subcommand, args, context)
-    elif subcommand in {'blame', 'praise'}:
-        if args:
-            response = SlackResponse(f'Usage: {command} {subcommand}', ephemeral=True)
-        else:
-            response = get_blame(context=context)
-    elif subcommand == 'about':
-        response = handle_about_command(command, args, context)
-    elif subcommand == 'by':
-        response = handle_by_command(command, args, context)
-    elif subcommand == 'stats':
-        if args:
-            response = SlackResponse(f'Usage: {command} stats', ephemeral=True)
-        else:
-            response = get_stats(context=context)
-    elif subcommand == 'version':
-        if args:
-            response = SlackResponse(f'Usage: {command} version', ephemeral=True)
-        else:
-            response = SlackResponse(f'🤖 haikubot version {VERSION}', ephemeral=True)
-    else:
-        response = help_message(command)
-
+    response = handle_haiku_command(command, text, context=context)
     return response.to_json()
 
 
-def help_message(command: str) -> SlackResponse:
-    return SlackResponse(textwrap.dedent(f'''
-        Usage:
-        *{command}* => generate a random haiku from remembered lines
-        *{command} about <topic>* => generate a random haiku about a specific topic or keyword
-        *{command} by <user>* => generate a random haiku by a specific user
-        *{command} add 5|7 <line>* => remember a line of 5 or 7 syllables
-        *{command} remove 5|7 <line>* => remove a line of 5 or 7 syllables
-        *{command} blame* => show the users who wrote the last haiku in this channel
-    ''').strip(), ephemeral=True)
+@app.route('/api/event/dispatch', methods=['POST'])
+def slack_event():
+    event_type = request.json.get('type')
+    if event_type == 'url_verification':
+        return request.json.get('challenge', '')  # Send direct response to Slack challenge requests.
+
+    if event_type == 'event_callback':
+        event_queue.submit(handle_slack_event, payload=request.json)
+    else:
+        print(f'Received unknown Slack event type: {event_type}')
+
+    return ''  # Send empty response immediately (event queue will post messages asynchronously).
