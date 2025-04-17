@@ -230,7 +230,7 @@ class HaikubotMain:
     def restart_server(cls) -> None:
         cls.stop_server()
         print(bold('Waiting for workers to exit...'))
-        time.sleep(10)
+        time.sleep(15)
         cls.start_server()
 
     def run(self) -> None:

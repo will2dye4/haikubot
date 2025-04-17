@@ -5,7 +5,9 @@ import textwrap
 
 from haikubot.db import (
     add_haiku_line,
+    claim_haiku_line,
     get_haiku_blame,
+    get_haiku_line,
     get_haiku_stats,
     generate_random_haiku,
     LinePosition,
@@ -53,6 +55,8 @@ def handle_haiku_command(command: str, text: str, context: SlackContext) -> Slac
         if args:
             return SlackResponse(f'Usage: {command} {subcommand}', ephemeral=True)
         return get_blame(context=context)
+    elif subcommand == 'claim':
+        return handle_claim_command(command, args, context)
     elif subcommand == 'about':
         return handle_about_command(command, args, context)
     elif subcommand == 'by':
@@ -77,6 +81,7 @@ def help_message(command: str) -> SlackResponse:
         *{command} by <user>* => generate a random haiku by a specific user
         *{command} add 5|7 <line>* => remember a line of 5 or 7 syllables
         *{command} remove 5|7 <line>* => remove a line of 5 or 7 syllables
+        *{command} claim 5|7 <line>* => claim a line of 5 or 7 syllables from another user
         *{command} blame* => show the users who wrote the last haiku in this channel
     ''').strip(), ephemeral=True)
 
@@ -100,6 +105,16 @@ def handle_add_remove_command(command: str, subcommand: str, args: list[str], co
         return add_line(line, syllables=syllables, context=context, position=position)
     else:
         return remove_line(line, syllables=syllables, context=context)
+
+
+def handle_claim_command(command: str, args: list[str], context: SlackContext) -> SlackResponse:
+    if len(args) < 2 or not (match := SYLLABLE_PATTERN.match(args[0])):
+        return SlackResponse(f'Usage: {command} claim 5|7 <line>', ephemeral=True)
+    if pos := match.group('position'):
+        return SlackResponse(f'Position ({pos}) may only be included when adding lines!', ephemeral=True)
+    syllables = SYLLABLE_COUNTS[match.group('count').lower()]
+    line = slack_escape(args[1:])
+    return claim_line(line, syllables=syllables, context=context)
 
 
 def handle_about_command(command: str, args: list[str], context: SlackContext) -> SlackResponse:
@@ -151,6 +166,19 @@ def remove_line(line: str, syllables: int, context: SlackContext) -> SlackRespon
               f' (team: {context.team_id}, channel: {context.channel_id})')
         return SlackResponse(f'✅ Removed: {line}')
     return SlackResponse(f'⚠️ Failed to remove line: {line}', ephemeral=True)
+
+
+def claim_line(line: str, syllables: int, context: SlackContext) -> SlackResponse:
+    if not (existing_line := get_haiku_line(line, syllables, context)):
+        # If the line doesn't exist, just add it.
+        return add_line(line, syllables, context)
+    original_user_id = existing_line.context.user_id
+    if original_user_id == context.user_id:
+        return SlackResponse("You can't claim a line from yourself!", ephemeral=True)
+    if not claim_haiku_line(line, syllables, context):
+        return SlackResponse(f'⚠️ Failed to claim line: {line}', ephemeral=True)
+    print(f'User {context.user_id} claimed line: {line} (team: {context.team_id}, original user: {original_user_id})')
+    return SlackResponse(f'{slack_mention(context.user_id)} claimed "{line}" from {slack_mention(original_user_id)}')
 
 
 def get_blame(context: SlackContext) -> SlackResponse:

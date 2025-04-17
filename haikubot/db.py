@@ -15,6 +15,9 @@ from haikubot.constants import DEFAULT_DB_NAME, DEFAULT_DB_PORT, DEFAULT_DB_HOST
 from haikubot.slack import SlackContext
 
 
+BSON = dict[str, Any]
+
+
 client = MongoClient(host=config.get('db.host', DEFAULT_DB_HOST),
                      port=config.get('db.port', DEFAULT_DB_PORT))
 db = client[config.get('db.name', DEFAULT_DB_NAME)]
@@ -39,13 +42,13 @@ class HaikuLine:
     id: Optional[ObjectId] = None
 
     @classmethod
-    def from_bson(cls, bson: dict[str, Any]) -> 'HaikuLine':
+    def from_bson(cls, bson: BSON) -> 'HaikuLine':
         position = LinePosition.value_of(bson.get('position', ''))
         return cls(text=bson['text'], syllables=bson['syllables'], context=SlackContext.from_bson(bson),
                    created=bson['created'], position=position, id=bson['_id'])
 
-    def to_bson(self) -> dict[str, Any]:
-        obj: dict[str, Any] = {
+    def to_bson(self) -> BSON:
+        obj: BSON = {
             'text': self.text,
             'syllables': self.syllables,
             'user_id': self.context.user_id,
@@ -72,7 +75,7 @@ class Haiku:
         return cls(lines=lines, context=context)
 
     @classmethod
-    def from_bson(cls, bson: dict[str, Any]) -> 'Haiku':
+    def from_bson(cls, bson: BSON) -> 'Haiku':
         bson['user_id'] = None  # Haikus don't have a single user_id (they have multiple).
         lines = [
             HaikuLine(
@@ -94,8 +97,8 @@ class Haiku:
     def user_ids(self) -> list[str]:
         return [line.context.user_id for line in self.lines]
 
-    def to_bson(self) -> dict[str, Any]:
-        obj: dict[str, Any] = {
+    def to_bson(self) -> BSON:
+        obj: BSON = {
             'lines': [
                 {'text': line.text, 'user_id': line.context.user_id, '_id': line.id}
                 for line in self.lines
@@ -222,7 +225,7 @@ def generate_random_haiku(context: SlackContext, user_id: Optional[str] = None,
 
 
 def add_haiku_line(text: str, syllables: int, context: SlackContext, position: Optional[LinePosition] = None) -> bool:
-    if db.lines.count_documents({'text': text, 'syllables': syllables, 'team_id': context.team_id}) > 0:
+    if db.lines.count_documents(get_line_key(text, syllables, context)) > 0:
         return True
     line = HaikuLine(text=text, syllables=syllables, context=context, position=position)
     result = db.lines.insert_one(line.to_bson())
@@ -230,8 +233,31 @@ def add_haiku_line(text: str, syllables: int, context: SlackContext, position: O
 
 
 def remove_haiku_line(text: str, syllables: int, context: SlackContext) -> bool:
-    result = db.lines.delete_many({'text': text, 'syllables': syllables, 'team_id': context.team_id})
+    result = db.lines.delete_many(get_line_key(text, syllables, context))
     return result.deleted_count > 0
+
+
+def claim_haiku_line(text: str, syllables: int, context: SlackContext) -> bool:
+    if not (line := get_haiku_line(text, syllables, context)):
+        return False
+    result = db.lines.update_one(filter={'_id': line.id}, update={'$set': {'user_id': context.user_id}})
+    if result.modified_count == 0:
+        return False
+    # Try to update the poems, but don't fail if there are none for some reason.
+    db.poems.update_many(filter={'team_id': context.team_id},
+                         update={'$set': {'lines.$[line].user_id': context.user_id}},
+                         array_filters=[{'line._id': line.id}])
+    return True
+
+
+def get_haiku_line(text: str, syllables: int, context: SlackContext) -> Optional[HaikuLine]:
+    if line := db.lines.find_one(get_line_key(text, syllables, context)):
+        return HaikuLine.from_bson(line)
+    return None
+
+
+def get_line_key(text: str, syllables: int, context: SlackContext) -> BSON:
+    return {'text': text, 'syllables': syllables, 'team_id': context.team_id}
 
 
 def get_haiku_blame(context: SlackContext) -> Optional[list[str]]:
