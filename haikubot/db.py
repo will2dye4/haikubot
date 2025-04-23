@@ -133,6 +133,10 @@ class HaikuStats:
     def total_lines(self) -> int:
         return self.five_syllable_lines + self.seven_syllable_lines
 
+    @property
+    def possible_combinations(self) -> int:
+        return self.five_syllable_lines * self.seven_syllable_lines * (self.five_syllable_lines - 1)
+
 
 def get_random_lines(syllables: int, context: SlackContext, user_id: Optional[str] = None,
                      search_term: Optional[str] = None, exclude_ids: Optional[list[ObjectId]] = None,
@@ -268,6 +272,10 @@ def get_haiku_blame(context: SlackContext) -> Optional[list[str]]:
     return Haiku.from_bson(latest_haiku).user_ids
 
 
-def get_haiku_stats(context: SlackContext) -> HaikuStats:
-    return HaikuStats.from_cursor(cursor=db.lines.find({'team_id': context.team_id}),
-                                  total_poems=db.poems.count_documents({'team_id': context.team_id}))
+def get_haiku_stats(context: SlackContext, user_id: Optional[str] = None) -> HaikuStats:
+    line_filter: dict[str, Any] = {'team_id': context.team_id}
+    poem_filter: dict[str, Any] = {'team_id': context.team_id}
+    if user_id:
+        line_filter['user_id'] = user_id
+        poem_filter['lines'] = {'$elemMatch': {'user_id': user_id}}
+    return HaikuStats.from_cursor(cursor=db.lines.find(line_filter), total_poems=db.poems.count_documents(poem_filter))

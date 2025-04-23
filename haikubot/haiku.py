@@ -62,9 +62,7 @@ def handle_haiku_command(command: str, text: str, context: SlackContext) -> Slac
     elif subcommand == 'by':
         return handle_by_command(command, args, context)
     elif subcommand == 'stats':
-        if args:
-            return SlackResponse(f'Usage: {command} stats', ephemeral=True)
-        return get_stats(context=context)
+        return handle_stats_command(command, args, context)
     elif subcommand == 'version':
         if args:
             return SlackResponse(f'Usage: {command} version', ephemeral=True)
@@ -83,6 +81,8 @@ def help_message(command: str) -> SlackResponse:
         *{command} remove 5|7 <line>* => remove a line of 5 or 7 syllables
         *{command} claim 5|7 <line>* => claim a line of 5 or 7 syllables from another user
         *{command} blame* => show the users who wrote the last haiku in this channel
+        *{command} stats* => show statistics about remembered lines and poems
+        *{command} stats for <user>* => show statistics about a specific user
     ''').strip(), ephemeral=True)
 
 
@@ -139,6 +139,21 @@ def handle_by_command(command: str, args: list[str], context: SlackContext) -> S
     return generate_haiku(context=context, user_id=user_id)
 
 
+def handle_stats_command(command: str, args: list[str], context: SlackContext) -> SlackResponse:
+    user_id = None
+    if args:
+        if len(args) != 2 or args[0].lower() not in {'about', 'by', 'for'}:
+            return SlackResponse(f'Usage: {command} stats [for <user>]', ephemeral=True)
+        if args[1].lower() == 'me':
+            user_id = context.user_id
+        elif not (user_id := get_user_id(args[1])):
+            return SlackResponse(
+                f'You need to tag a user by name! Example: {command} stats for {slack_mention(context.user_id)}',
+                ephemeral=True
+            )
+    return get_stats(context=context, user_id=user_id)
+
+
 def generate_haiku(context: SlackContext, user_id: Optional[str] = None,
                    search_term: Optional[str] = None) -> SlackResponse:
     if poem := generate_random_haiku(context=context, user_id=user_id, search_term=search_term):
@@ -190,12 +205,23 @@ def get_blame(context: SlackContext) -> SlackResponse:
     return SlackResponse('⚠️ Failed to find the latest haiku for this channel!', ephemeral=True)
 
 
-def get_stats(context: SlackContext) -> SlackResponse:
-    stats = get_haiku_stats(context=context)
-    return SlackResponse(textwrap.dedent(f'''
-        *Total lines:* {stats.total_lines:,}
-          *5 syllables:* {stats.five_syllable_lines:,}
-          *7 syllables:* {stats.seven_syllable_lines:,}
-        *Total poems:* {stats.total_poems:,}
-        *Total unique contributors:* {stats.unique_users:,}
-    ''').strip())
+def get_stats(context: SlackContext, user_id: Optional[str] = None) -> SlackResponse:
+    stats = get_haiku_stats(context=context, user_id=user_id)
+    if user_id:
+        response = f'''
+            *Total lines by {slack_mention(user_id)}:* {stats.total_lines:,}
+              *5 syllables:* {stats.five_syllable_lines:,}
+              *7 syllables:* {stats.seven_syllable_lines:,}
+            *Total poems contributed to:* {stats.total_poems:,}
+            *Total possible poems:* {stats.possible_combinations:,}
+        '''
+    else:
+        response = f'''
+            *Total lines:* {stats.total_lines:,}
+              *5 syllables:* {stats.five_syllable_lines:,}
+              *7 syllables:* {stats.seven_syllable_lines:,}
+            *Total poems generated:* {stats.total_poems:,}
+            *Total possible poems:* {stats.possible_combinations:,}
+            *Total unique contributors:* {stats.unique_users:,}
+        '''
+    return SlackResponse(textwrap.dedent(response).strip())
